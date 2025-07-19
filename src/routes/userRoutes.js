@@ -1,22 +1,11 @@
 import express from "express";
 import { consoleError } from "../utils/helpers/consoleError.js";
+import { getUserById, getUsers } from "../controllers/userController.js";
+import { isAuthenticated } from "../middleware/isAuthenticated.js";
 
 const router = express.Router();
 
-router.get("/", (req, res) => {
-  try {
-    res.status(200).json({
-      success: true,
-      msg: "User fetched successfully",
-      data: [],
-    });
-  } catch (error) {
-    consoleError("fetching users");
-    res.status(500).json({
-      success: true,
-      msg: "Server error",
-    });
-  }
-});
+router.get("/", isAuthenticated, getUsers);
+router.get("/:id", isAuthenticated, getUserById);
 
 export default router;
