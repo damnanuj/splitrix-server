@@ -9,8 +9,23 @@ export const login = async (req, res) => {
     const { email, password } = req.body;
     console.log(email, password);
 
+    if (!email || !password) {
+      return res.status(404).json({
+        success: false,
+        message: "Missing credentials",
+      });
+    }
+
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid email format",
+      });
+    }
+
     const user = await userModel.findOne({ email }).select("+password");
-    console.log(user);
+    console.log(user, "sfddffdfdsf");
 
     if (!user) {
       return res.status(404).json({
@@ -35,17 +50,15 @@ export const login = async (req, res) => {
       }
     );
 
-    console.log(token, user);
+    // console.log(token, user);
+    const userObj = user.toObject();
+    delete userObj.password;
 
     return res.status(200).json({
       success: true,
       message: "Login successful",
       token,
-      user: {
-        id: user._id,
-        name: user.name,
-        email: user.email,
-      },
+      user: userObj,
     });
   } catch (error) {
     console.error("Login controller error:", error);
@@ -123,5 +136,42 @@ export const signup = async (req, res) => {
       success: false,
       message: "Internal server error",
     });
+  }
+};
+
+// -------login via google--------
+export const handleGoogleAuth = async (req, res) => {
+  const { email, name, photo } = req.body;
+
+  // console.log(email, name, photo, "<<<<<<");
+
+  try {
+    let user = await userModel.findOne({ email });
+    // console.log(user, "sfsdf");
+
+    if (!user) {
+      // ----without password----
+      user = new userModel({
+        name,
+        email,
+        profilePicture: photo,
+      });
+      await user.save();
+    }
+
+    const token = jwt.sign(
+      { id: user._id, email: user.email },
+      process.env.JWT_SECRET,
+      { expiresIn: "7d" }
+    );
+
+    res.status(200).json({
+      success: true,
+      token,
+      user,
+    });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ success: false, message: "Google Auth Failed" });
   }
 };
