@@ -23,6 +23,13 @@ app.use(cors());
 app.use("/api/auth", authRoutes);
 app.use("/api/user", userRoutes);
 
+app.get("/", (req, res) => {
+  res.status(200).json({
+    success: true,
+    msg: "Splitrix server is running",
+  });
+});
+
 app.listen(PORT, () => {
   console.log(`Server is running on PORT = ${PORT}`);
   connectMongoDb();
