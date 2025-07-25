@@ -36,9 +36,7 @@ app.get("/", (req, res) => {
 // });
 connectMongoDb();
 
-export default handler = serverless(app);
-
-if (process.env.NODE_ENV !== "production") {
+if (process.env.NODE_ENV !== "prod") {
   app.listen(PORT, () => {
     console.log(`🚀 Server is running locally at http://localhost:${PORT}`);
   });
