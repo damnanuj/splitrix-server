@@ -3,7 +3,7 @@ const app = express();
 import authRoutes from "./routes/authRoutes.js";
 import userRoutes from "./routes/userRoutes.js";
 import cors from "cors";
-
+import serverless from "serverless-http";
 import { connectMongoDb } from "./db/dbConnection.js";
 import { ENV } from "./utils/env/env.js";
 
@@ -30,8 +30,16 @@ app.get("/", (req, res) => {
   });
 });
 
-app.listen(PORT, () => {
-  console.log(`Server is running on PORT = ${PORT}`);
-  connectMongoDb();
-});
+// app.listen(PORT, () => {
+//   console.log(`Server is running on PORT = ${PORT}`);
+//   connectMongoDb();
+// });
+connectMongoDb();
 
+export const handler = serverless(app);
+
+if (process.env.NODE_ENV !== "production") {
+  app.listen(PORT, () => {
+    console.log(`🚀 Server is running locally at http://localhost:${PORT}`);
+  });
+}
