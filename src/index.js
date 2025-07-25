@@ -41,3 +41,5 @@ if (process.env.NODE_ENV !== "prod") {
     console.log(`🚀 Server is running locally at http://localhost:${PORT}`);
   });
 }
+
+export default app;
