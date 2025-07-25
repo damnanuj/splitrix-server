@@ -36,7 +36,7 @@ app.get("/", (req, res) => {
 // });
 connectMongoDb();
 
-export default serverless(app);
+export default handler = serverless(app);
 
 if (process.env.NODE_ENV !== "production") {
   app.listen(PORT, () => {
