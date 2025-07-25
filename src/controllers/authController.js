@@ -175,3 +175,17 @@ export const handleGoogleAuth = async (req, res) => {
     res.status(500).json({ success: false, message: "Google Auth Failed" });
   }
 };
+
+export const demoController = async (req, res) => {
+  try {
+    return res.status(200).json({
+      success: true,
+      msg: "Demo route controller is working",
+    });
+  } catch (error) {
+    return res.status(500).json({
+      success: false,
+      msg: "Internal server error",
+    });
+  }
+};
