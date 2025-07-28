@@ -16,13 +16,14 @@ export const login = async (req, res) => {
       });
     }
 
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    const emailRegex = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
     if (!emailRegex.test(email)) {
       return res.status(400).json({
         success: false,
         message: "Invalid email format",
       });
     }
+    
 
     const user = await userModel.findOne({ email }).select("+password");
     console.log(user, "sfddffdfdsf");

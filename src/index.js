@@ -2,6 +2,7 @@ import express from "express";
 const app = express();
 import authRoutes from "./routes/authRoutes.js";
 import userRoutes from "./routes/userRoutes.js";
+import billRoutes from "./routes/billRoutes.js";
 import cors from "cors";
 import serverless from "serverless-http";
 import { connectMongoDb } from "./db/dbConnection.js";
@@ -22,6 +23,7 @@ app.use(cors());
 // app.get("/api/auth", authRoutes);
 app.use("/api/auth", authRoutes);
 app.use("/api/user", userRoutes);
+app.use("/api/bill", billRoutes);
 
 app.get("/", (req, res) => {
   res.status(200).json({
