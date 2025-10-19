@@ -1,4 +1,4 @@
-import { Bill } from "../models/billSchema.js"; // adjust path as needed
+import { Bill } from "../models/billSchema.js"; 
 
 export const createBill = async (req, res) => {
   try {

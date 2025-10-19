@@ -1,6 +1,6 @@
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
-import userModel from "../models/userModel.js";
+import { User } from "../models/userModel.js";
 import { ENV } from "../utils/env/env.js";
 
 // --------existing user login------
@@ -23,9 +23,8 @@ export const login = async (req, res) => {
         message: "Invalid email format",
       });
     }
-    
 
-    const user = await userModel.findOne({ email }).select("+password");
+    const user = await User.findOne({ email }).select("+password");
     console.log(user, "sfddffdfdsf");
 
     if (!user) {
@@ -67,6 +66,43 @@ export const login = async (req, res) => {
   }
 };
 
+// -------login via google--------
+export const handleGoogleAuth = async (req, res) => {
+  const { email, name, photo } = req.body;
+
+  // console.log(email, name, photo, "<<<<<<");
+
+  try {
+    let user = await User.findOne({ email });
+    // console.log(user, "sfsdf");
+
+    if (!user) {
+      // ----without password----
+      user = new User({
+        name,
+        email,
+        profilePicture: photo,
+      });
+      await user.save();
+    }
+
+    const token = jwt.sign(
+      { id: user._id, email: user.email },
+      ENV.JWT_SECRET,
+      { expiresIn: "7d" }
+    );
+
+    res.status(200).json({
+      success: true,
+      token,
+      user,
+    });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ success: false, message: "Google Auth Failed" });
+  }
+};
+
 // ----------new user signup----------
 export const signup = async (req, res) => {
   try {
@@ -79,7 +115,7 @@ export const signup = async (req, res) => {
       });
     }
 
-    const existingUser = await userModel.findOne({ email });
+    const existingUser = await User.findOne({ email });
     if (existingUser) {
       return res.status(409).json({
         success: false,
@@ -98,7 +134,7 @@ export const signup = async (req, res) => {
     const hashedPassword = await bcrypt.hash(password, salt);
 
     //---------create & save user
-    const newUser = await userModel.create({
+    const newUser = await User.create({
       name,
       email,
       password: hashedPassword,
@@ -137,43 +173,6 @@ export const signup = async (req, res) => {
       success: false,
       message: "Internal server error",
     });
-  }
-};
-
-// -------login via google--------
-export const handleGoogleAuth = async (req, res) => {
-  const { email, name, photo } = req.body;
-
-  // console.log(email, name, photo, "<<<<<<");
-
-  try {
-    let user = await userModel.findOne({ email });
-    // console.log(user, "sfsdf");
-
-    if (!user) {
-      // ----without password----
-      user = new userModel({
-        name,
-        email,
-        profilePicture: photo,
-      });
-      await user.save();
-    }
-
-    const token = jwt.sign(
-      { id: user._id, email: user.email },
-      process.env.JWT_SECRET,
-      { expiresIn: "7d" }
-    );
-
-    res.status(200).json({
-      success: true,
-      token,
-      user,
-    });
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ success: false, message: "Google Auth Failed" });
   }
 };
 

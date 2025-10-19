@@ -1,10 +1,10 @@
-import userModel from "../models/userModel.js";
+import { User } from "../models/userModel.js";
 
 import { consoleError } from "../utils/helpers/consoleError.js";
 
 export const getUsers = async (req, res) => {
   try {
-    const users = await userModel.find({});
+    const users = await User.find({});
     // console.log(users);
     if (users.length < 1) {
       return res.status(404).json({
@@ -32,7 +32,7 @@ export const getUserById = async (req, res) => {
   try {
     const { id } = req.params;
 
-    const user = await userModel.findById(id);
+    const user = await User.findById(id);
 
     if (!user) {
       return res
