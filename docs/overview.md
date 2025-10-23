@@ -63,7 +63,7 @@ Users (auth)
 - GET `/api/user/` — list all users
 - GET `/api/user/:id` — get user by id
 - POST `/api/user/friends` — add friend (mutual)
-- GET `/api/user/friends/list` — my friends
+- GET `/api/user/friends/list` — my friends (includes balance info per friend)
 
 Groups (auth)
 - POST `/api/group/` — create group
@@ -121,5 +121,6 @@ For request/response payloads, see `docs/routes.md` (includes JSON examples for 
 - Bill composer supporting the five split types
 - Balances view per group, and a global net balance
 - Trigger settlements and reflect in balances
+- Friends list with balance indicators (who owes whom)
 
 

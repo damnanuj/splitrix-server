@@ -1,5 +1,10 @@
 import express from "express";
-import { getUserById, getUsers, addFriend, listFriends } from "../controllers/userController.js";
+import {
+  getUserById,
+  getUsers,
+  addFriend,
+  listFriends,
+} from "../controllers/userController.js";
 import { isAuthenticated } from "../middleware/isAuthenticated.js";
 
 const router = express.Router();

@@ -12,7 +12,7 @@ export const login = async (req, res) => {
     if (!email || !password) {
       return res.status(404).json({
         success: false,
-        message: "Missing credentials",
+        msg: "Missing credentials",
       });
     }
 
@@ -20,7 +20,7 @@ export const login = async (req, res) => {
     if (!emailRegex.test(email)) {
       return res.status(400).json({
         success: false,
-        message: "Invalid email format",
+        msg: "Invalid email format",
       });
     }
 
@@ -30,7 +30,7 @@ export const login = async (req, res) => {
     if (!user) {
       return res.status(404).json({
         success: false,
-        message: "User not found",
+        msg: "User not found",
       });
     }
     // ---------password match----
@@ -38,7 +38,7 @@ export const login = async (req, res) => {
     if (!isMatch) {
       return res.status(401).json({
         success: false,
-        message: "Invalid credentials",
+        msg: "Invalid credentials",
       });
     }
     // ------token generation------
@@ -56,9 +56,9 @@ export const login = async (req, res) => {
 
     return res.status(200).json({
       success: true,
-      message: "Login successful",
+      msg: "Login successful",
       token,
-      user: userObj,
+      data: userObj,
     });
   } catch (error) {
     console.error("Login controller error:", error);
@@ -95,11 +95,11 @@ export const handleGoogleAuth = async (req, res) => {
     res.status(200).json({
       success: true,
       token,
-      user,
+      data: user,
     });
   } catch (err) {
     console.error(err);
-    res.status(500).json({ success: false, message: "Google Auth Failed" });
+    res.status(500).json({ success: false, msg: "Google Auth Failed" });
   }
 };
 
@@ -111,7 +111,7 @@ export const signup = async (req, res) => {
     if (!name || !email || !password) {
       return res.status(400).json({
         success: false,
-        message: "All fields are required",
+        msg: "All fields are required",
       });
     }
 
@@ -119,13 +119,13 @@ export const signup = async (req, res) => {
     if (existingUser) {
       return res.status(409).json({
         success: false,
-        message: "User already exists",
+        msg: "User already exists",
       });
     }
     if (password.length < 6) {
       return res.status(400).json({
         success: false,
-        message: "Password must be at least 6 characters long",
+        msg: "Password must be at least 6 characters long",
       });
     }
 
@@ -149,13 +149,13 @@ export const signup = async (req, res) => {
 
     return res.status(201).json({
       success: true,
-      message: "Signup successful",
+      msg: "Signup successful",
       token,
-      user: {
-        id: newUser._id,
-        name: newUser.name,
-        email: newUser.email,
-      },
+        data: {
+          id: newUser._id,
+          name: newUser.name,
+          email: newUser.email,
+        },
     });
   } catch (error) {
     console.error("Error in signup:", error);
@@ -164,14 +164,14 @@ export const signup = async (req, res) => {
       const errors = Object.values(error.errors).map((err) => err.message);
       return res.status(400).json({
         success: false,
-        message: "Validation failed",
+        msg: "Validation failed",
         errors,
       });
     }
 
     return res.status(500).json({
       success: false,
-      message: "Internal server error",
+      msg: "Internal server error",
     });
   }
 };

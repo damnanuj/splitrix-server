@@ -21,10 +21,19 @@ export const getGroupBalances = async (req, res) => {
       add(String(setl.to), setl.amount);
     }
 
-    const balances = Array.from(net.entries()).map(([userId, amount]) => ({ userId, amount }));
-    return res.status(200).json({ success: true, balances });
+    const balances = Array.from(net.entries()).map(([userId, amount]) => ({
+      userId,
+      amount,
+    }));
+    return res.status(200).json({
+      success: true,
+      msg: "Balances calculated successfully",
+      data: balances,
+    });
   } catch (e) {
-    return res.status(500).json({ success: false, message: "Failed to compute balances" });
+    return res
+      .status(500)
+      .json({ success: false, msg: "Failed to compute balances" });
   }
 };
 
@@ -45,10 +54,14 @@ export const getMyBalances = async (req, res) => {
       if (String(setl.from) === me) net -= setl.amount;
       if (String(setl.to) === me) net += setl.amount;
     }
-    return res.status(200).json({ success: true, net });
+    return res.status(200).json({
+      success: true,
+      msg: "Net balance calculated successfully",
+      data: { net },
+    });
   } catch (e) {
-    return res.status(500).json({ success: false, message: "Failed to compute balances" });
+    return res
+      .status(500)
+      .json({ success: false, msg: "Failed to compute balances" });
   }
 };
-
-

@@ -40,7 +40,11 @@ Base path: `/api`
   "friendId": "664f7d2f1a2b3c4d5e6f7a8b"
 }
 ```
-- GET `/user/friends/list` (auth)
+- GET `/user/friends/list` (auth) — returns friends with balance info
+  - Response includes `balance` object per friend:
+    - `net`: positive if friend owes me, negative if I owe friend, 0 if settled
+    - `status`: "friend_owes_me" | "i_owe_friend" | "settled"
+    - `amount`: absolute amount owed
 
 ### Groups
 - POST `/group/` (auth) — create group
