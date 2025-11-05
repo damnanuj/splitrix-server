@@ -6,12 +6,17 @@ const NotificationSchema = new Schema(
     type: {
       type: String,
       enum: [
-        "invite_sent",
+        "group_invite",
         "invite_accepted",
         "invite_declined",
+        "invite_expired",
         "group_joined",
         "bill_added",
+        "bill_updated",
+        "bill_deleted",
         "settlement_made",
+        "settlement_updated",
+        "settlement_deleted",
       ],
       required: true,
     },
@@ -26,5 +31,3 @@ const NotificationSchema = new Schema(
 NotificationSchema.index({ user: 1, createdAt: -1 });
 
 export const Notification = mongoose.model("Notification", NotificationSchema);
-
-
