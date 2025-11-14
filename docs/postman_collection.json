@@ -1,0 +1,228 @@
+{
+  "info": {
+    "name": "Splitrix Server API",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "baseUrl", "value": "http://localhost:8000" },
+    { "key": "token", "value": "" },
+    { "key": "userId", "value": "" },
+    { "key": "groupId", "value": "" },
+    { "key": "inviteId", "value": "" }
+  ],
+  "item": [
+    {
+      "name": "Auth",
+      "item": [
+        {
+          "name": "Signup",
+          "request": {
+            "method": "POST",
+            "header": [ { "key": "Content-Type", "value": "application/json" } ],
+            "url": { "raw": "{{baseUrl}}/api/auth/signup", "host": ["{{baseUrl}}"], "path": ["api", "auth", "signup"] },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Anuj\",\n  \"email\": \"anuj@example.com\",\n  \"password\": \"secret123\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Login",
+          "request": {
+            "method": "POST",
+            "header": [ { "key": "Content-Type", "value": "application/json" } ],
+            "url": { "raw": "{{baseUrl}}/api/auth/login", "host": ["{{baseUrl}}"], "path": ["api", "auth", "login"] },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"anuj@example.com\",\n  \"password\": \"secret123\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Google Auth",
+          "request": {
+            "method": "POST",
+            "header": [ { "key": "Content-Type", "value": "application/json" } ],
+            "url": { "raw": "{{baseUrl}}/api/auth/google", "host": ["{{baseUrl}}"], "path": ["api", "auth", "google"] },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"anuj@example.com\",\n  \"name\": \"Anuj\",\n  \"photo\": \"https://.../avatar.png\"\n}"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Users",
+      "item": [
+        {
+          "name": "List Users",
+          "request": {
+            "method": "GET",
+            "header": [ { "key": "Authorization", "value": "Bearer {{token}}" } ],
+            "url": { "raw": "{{baseUrl}}/api/user/", "host": ["{{baseUrl}}"], "path": ["api", "user", ""] }
+          }
+        },
+        {
+          "name": "Get User By Id",
+          "request": {
+            "method": "GET",
+            "header": [ { "key": "Authorization", "value": "Bearer {{token}}" } ],
+            "url": { "raw": "{{baseUrl}}/api/user/{{userId}}", "host": ["{{baseUrl}}"], "path": ["api", "user", "{{userId}}"] }
+          }
+        },
+        {
+          "name": "Add Friend",
+          "request": {
+            "method": "POST",
+            "header": [ { "key": "Authorization", "value": "Bearer {{token}}" }, { "key": "Content-Type", "value": "application/json" } ],
+            "url": { "raw": "{{baseUrl}}/api/user/friends", "host": ["{{baseUrl}}"], "path": ["api", "user", "friends"] },
+            "body": { "mode": "raw", "raw": "{\n  \"friendId\": \"{{userId}}\"\n}" }
+          }
+        },
+        {
+          "name": "List Friends",
+          "request": {
+            "method": "GET",
+            "header": [ { "key": "Authorization", "value": "Bearer {{token}}" } ],
+            "url": { "raw": "{{baseUrl}}/api/user/friends/list", "host": ["{{baseUrl}}"], "path": ["api", "user", "friends", "list"] }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Groups",
+      "item": [
+        {
+          "name": "Create Group",
+          "request": {
+            "method": "POST",
+            "header": [ { "key": "Authorization", "value": "Bearer {{token}}" }, { "key": "Content-Type", "value": "application/json" } ],
+            "url": { "raw": "{{baseUrl}}/api/group/", "host": ["{{baseUrl}}"], "path": ["api", "group", ""] },
+            "body": { "mode": "raw", "raw": "{\n  \"name\": \"Billionaires\",\n  \"memberIds\": [],\n  \"description\": \"Trip crew\"\n}" }
+          }
+        },
+        {
+          "name": "My Groups",
+          "request": {
+            "method": "GET",
+            "header": [ { "key": "Authorization", "value": "Bearer {{token}}" } ],
+            "url": { "raw": "{{baseUrl}}/api/group/mine", "host": ["{{baseUrl}}"], "path": ["api", "group", "mine"] }
+          }
+        },
+        {
+          "name": "Invite To Group",
+          "request": {
+            "method": "POST",
+            "header": [ { "key": "Authorization", "value": "Bearer {{token}}" }, { "key": "Content-Type", "value": "application/json" } ],
+            "url": { "raw": "{{baseUrl}}/api/group/invite", "host": ["{{baseUrl}}"], "path": ["api", "group", "invite"] },
+            "body": { "mode": "raw", "raw": "{\n  \"groupId\": \"{{groupId}}\",\n  \"userId\": \"{{userId}}\"\n}" }
+          }
+        },
+        {
+          "name": "Respond To Invite",
+          "request": {
+            "method": "POST",
+            "header": [ { "key": "Authorization", "value": "Bearer {{token}}" }, { "key": "Content-Type", "value": "application/json" } ],
+            "url": { "raw": "{{baseUrl}}/api/group/invite/respond", "host": ["{{baseUrl}}"], "path": ["api", "group", "invite", "respond"] },
+            "body": { "mode": "raw", "raw": "{\n  \"inviteId\": \"{{inviteId}}\",\n  \"action\": \"accepted\"\n}" }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Bills",
+      "item": [
+        {
+          "name": "Create Bill (Unequal)",
+          "request": {
+            "method": "POST",
+            "header": [ { "key": "Authorization", "value": "Bearer {{token}}" }, { "key": "Content-Type", "value": "application/json" } ],
+            "url": { "raw": "{{baseUrl}}/api/bill/", "host": ["{{baseUrl}}"], "path": ["api", "bill", ""] },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Dinner\",\n  \"amount\": 500,\n  \"group\": \"{{groupId}}\",\n  \"paidBy\": \"{{userId}}\",\n  \"participants\": [\"{{userId}}\"],\n  \"splitType\": \"unequal\",\n  \"shares\": [\n    { \"user\": \"{{userId}}\", \"amount\": 120 }\n  ]\n}"
+            }
+          }
+        },
+        {
+          "name": "Create Bill (Equal)",
+          "request": {
+            "method": "POST",
+            "header": [ { "key": "Authorization", "value": "Bearer {{token}}" }, { "key": "Content-Type", "value": "application/json" } ],
+            "url": { "raw": "{{baseUrl}}/api/bill/", "host": ["{{baseUrl}}"], "path": ["api", "bill", ""] },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Dinner\",\n  \"amount\": 500,\n  \"group\": \"{{groupId}}\",\n  \"paidBy\": \"{{userId}}\",\n  \"participants\": [\"{{userId}}\"],\n  \"splitType\": \"equal\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Create Bill (Itemized)",
+          "request": {
+            "method": "POST",
+            "header": [ { "key": "Authorization", "value": "Bearer {{token}}" }, { "key": "Content-Type", "value": "application/json" } ],
+            "url": { "raw": "{{baseUrl}}/api/bill/", "host": ["{{baseUrl}}"], "path": ["api", "bill", ""] },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Stationery\",\n  \"amount\": 100,\n  \"group\": \"{{groupId}}\",\n  \"paidBy\": \"{{userId}}\",\n  \"participants\": [\"{{userId}}\"],\n  \"splitType\": \"itemized\",\n  \"items\": [\n    { \"label\": \"Book\", \"amount\": 70, \"paidBy\": \"{{userId}}\", \"involved\": [\"{{userId}}\"] },\n    { \"label\": \"Pen\",  \"amount\": 30, \"paidBy\": \"{{userId}}\", \"involved\": [\"{{userId}}\"] }\n  ]\n}"
+            }
+          }
+        },
+        {
+          "name": "List Group Bills",
+          "request": {
+            "method": "GET",
+            "header": [ { "key": "Authorization", "value": "Bearer {{token}}" } ],
+            "url": { "raw": "{{baseUrl}}/api/bill/group/{{groupId}}", "host": ["{{baseUrl}}"], "path": ["api", "bill", "group", "{{groupId}}"] }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Settlements",
+      "item": [
+        {
+          "name": "Create Settlement",
+          "request": {
+            "method": "POST",
+            "header": [ { "key": "Authorization", "value": "Bearer {{token}}" }, { "key": "Content-Type", "value": "application/json" } ],
+            "url": { "raw": "{{baseUrl}}/api/settlement/", "host": ["{{baseUrl}}"], "path": ["api", "settlement", ""] },
+            "body": { "mode": "raw", "raw": "{\n  \"group\": \"{{groupId}}\",\n  \"from\": \"{{userId}}\",\n  \"to\": \"{{userId}}\",\n  \"amount\": 230,\n  \"note\": \"Dinner payback\"\n}" }
+          }
+        },
+        {
+          "name": "List Group Settlements",
+          "request": {
+            "method": "GET",
+            "header": [ { "key": "Authorization", "value": "Bearer {{token}}" } ],
+            "url": { "raw": "{{baseUrl}}/api/settlement/group/{{groupId}}", "host": ["{{baseUrl}}"], "path": ["api", "settlement", "group", "{{groupId}}"] }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Balances",
+      "item": [
+        {
+          "name": "Group Balances",
+          "request": {
+            "method": "GET",
+            "header": [ { "key": "Authorization", "value": "Bearer {{token}}" } ],
+            "url": { "raw": "{{baseUrl}}/api/balance/group/{{groupId}}", "host": ["{{baseUrl}}"], "path": ["api", "balance", "group", "{{groupId}}"] }
+          }
+        },
+        {
+          "name": "My Net Balance",
+          "request": {
+            "method": "GET",
+            "header": [ { "key": "Authorization", "value": "Bearer {{token}}" } ],
+            "url": { "raw": "{{baseUrl}}/api/balance/me", "host": ["{{baseUrl}}"], "path": ["api", "balance", "me"] }
+          }
+        }
+      ]
+    }
+  ]
+}
+
+
