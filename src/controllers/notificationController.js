@@ -1,7 +1,4 @@
 import { Notification } from "../models/notificationModel.js";
-import { Invite } from "../models/inviteModel.js";
-import { Group } from "../models/groupModel.js";
-import { User } from "../models/userModel.js";
 
 export const getMyNotifications = async (req, res) => {
   try {
