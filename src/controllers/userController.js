@@ -9,7 +9,7 @@ export const getUsers = async (req, res) => {
     const users = await User.find({ _id: { $ne: currentUserId } });
     // console.log(users);
     if (users.length < 1) {
-      return res.status(404).json({
+      return res.status(200).json({
         success: true,
         msg: "No users found",
         data: users || [],
@@ -73,6 +73,24 @@ export const addFriend = async (req, res) => {
   }
 };
 
+export const removeFriend = async (req, res) => {
+  try {
+    const me = req.user?.id;
+    const { id } = req.params;
+    if (!id)
+      return res
+        .status(400)
+        .json({ success: false, msg: "friendId is required" });
+    await User.updateOne({ _id: me }, { $pull: { friends: id } });
+    await User.updateOne({ _id: id }, { $pull: { friends: me } });
+    return res.status(200).json({ success: true, msg: "Friend removed" });
+  } catch (error) {
+    consoleError("removing friend", error);
+    return res
+      .status(500)
+      .json({ success: false, msg: "Failed to remove friend" });
+  }
+};
 export const listFriends = async (req, res) => {
   try {
     const me = req.user?.id;

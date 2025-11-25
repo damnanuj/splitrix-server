@@ -4,7 +4,7 @@ import { sendNotification } from "../utils/notifications/send.js";
 
 export const createSettlement = async (req, res) => {
   try {
-    const { group, from, to, amount, note } = req.body;
+    const { group, from, to, amount } = req.body;
     if (!group || !from || !to || !amount) {
       return res.status(400).json({ success: false, msg: "Missing fields" });
     }
@@ -13,7 +13,7 @@ export const createSettlement = async (req, res) => {
       from,
       to,
       amount,
-      note,
+ 
     });
     await Activity.create({
       group,

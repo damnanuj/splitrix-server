@@ -1,6 +1,5 @@
 import mongoose from "mongoose";
 import { Group } from "../models/groupModel.js";
-import { Invite } from "../models/inviteModel.js";
 import { Activity } from "../models/activityModel.js";
 import { Bill } from "../models/billSchema.js";
 import { Settlement } from "../models/settlementModel.js";
@@ -35,12 +34,12 @@ export const createGroup = async (req, res) => {
     // Remove duplicates
     const uniqueMemberIds = [...new Set(validMemberIds)];
 
-    // Step 1: Create the group (only creator is a member, invited users go to invitedUsers)
+    // Step 1: Create the group with all members (creator + selected friends)
+    const allMembers = [createdBy, ...uniqueMemberIds];
     const group = await Group.create({
       name,
       createdBy,
-      members: [createdBy],
-      invitedUsers: uniqueMemberIds,
+      members: allMembers,
       description,
       avatar,
     });
@@ -54,182 +53,136 @@ export const createGroup = async (req, res) => {
       data: { name },
     });
 
-    // Step 3: Fetch inviter (creator) details once
-    const inviterUser = await User.findById(createdBy).select(
+    // Step 3: Fetch creator details
+    const creatorUser = await User.findById(createdBy).select(
       "name email profilePicture"
     );
 
-    if (!inviterUser) {
+    if (!creatorUser) {
       return res
         .status(404)
         .json({ success: false, message: "Creator user not found" });
     }
 
-    // Step 4: Handle invites (if any friends selected)
+    // Step 4: Send notifications to all added members (excluding creator)
     if (uniqueMemberIds.length > 0) {
       console.log(
-        `📨 Creating invite for ${uniqueMemberIds.length} users in group ${group._id}`
+        `📨 Sending notifications to ${uniqueMemberIds.length} users added to group ${group._id}`
       );
 
-      // Convert string IDs to ObjectIds and create invitedUsers array with status
-      const invitedUsers = uniqueMemberIds.map((id) => ({
-        userId: new mongoose.Types.ObjectId(id),
-        status: "pending",
-      }));
-
-      try {
-        // Create or update invite (one invite per group with all users)
-        let invite = await Invite.findOne({ group: group._id });
-
-        if (invite) {
-          // Update existing invite - add new users if not already present
-          const existingUserIds = invite.invitedUsers.map((u) =>
-            String(u.userId)
-          );
-          const newInvitedUsers = invitedUsers.filter(
-            (u) => !existingUserIds.includes(String(u.userId))
-          );
-
-          if (newInvitedUsers.length > 0) {
-            invite.invitedUsers.push(...newInvitedUsers);
-            await invite.save();
-            console.log(
-              `✅ Updated existing invite ${invite._id} with ${newInvitedUsers.length} new users`
-            );
-          } else {
-            console.log(
-              `ℹ️ All users already in existing invite ${invite._id}`
-            );
-          }
-        } else {
-          // Create new invite with all users
-          invite = await Invite.create({
-            group: new mongoose.Types.ObjectId(group._id),
-            invitedBy: new mongoose.Types.ObjectId(createdBy),
-            invitedUsers: invitedUsers,
-          });
-          console.log(
-            `✅ Created new invite ${invite._id} for ${invitedUsers.length} users`
-          );
-        }
-
-        // Send notifications to all invited users (each user gets their own notification)
-        const notificationPromises = invitedUsers.map(async (invitedUser) => {
-          const friendId = invitedUser.userId;
-          try {
-            const notificationResult = await sendNotification({
-              user: friendId,
-              type: "group_invite",
-              title: "You have a new group invite",
-              message: `${inviterUser.name} invited you to join "${group.name}"`,
-              data: {
-                inviteId: invite._id, // Same inviteId for all users
-                groupId: group._id,
-                inviterId: createdBy,
-                inviterName: inviterUser.name,
-                inviterProfilePicture: inviterUser.profilePicture,
-                groupName: group.name,
-                groupDescription: group.description,
-                groupAvatar: group.avatar,
-              },
-            });
-
-            if (notificationResult) {
-              console.log(
-                `✅ Notification sent successfully for user ${friendId}`
-              );
-              return { friendId: String(friendId), status: "ok" };
-            } else {
-              console.log(`⚠️ Notification failed for user ${friendId}`);
-              return {
-                friendId: String(friendId),
-                status: "notification_failed",
-              };
-            }
-          } catch (err) {
-            console.error(
-              `❌ Failed to send notification to ${friendId}:`,
-              err.message
-            );
-            return {
-              friendId: String(friendId),
-              status: "notification_error",
-              error: err.message,
-            };
-          }
-        });
-
-        // Wait for all notifications to be sent
-        const notificationResults = await Promise.allSettled(
-          notificationPromises
-        );
-        const processedNotifications = notificationResults.map(
-          (result, index) => {
-            if (result.status === "fulfilled") {
-              return result.value;
-            } else {
-              return {
-                friendId: String(invitedUsers[index]?.userId || ""),
-                status: "notification_error",
-                error: result.reason?.message || "Unknown error",
-              };
-            }
-          }
-        );
-
-        const successfulNotifications = processedNotifications.filter(
-          (r) => r.status === "ok"
-        );
-        console.log(
-          `📨 Notification results: ${successfulNotifications.length}/${invitedUsers.length} sent successfully`
-        );
-
-        // Log invite activity (after notifications are sent)
+      // Send notifications to all added members
+      const notificationPromises = uniqueMemberIds.map(async (friendId) => {
         try {
-          await Activity.create({
-            group: group._id,
-            actor: createdBy,
-            type: "group_invite",
-            summary: `Group invite sent to ${invitedUsers.length} users`,
+          const notificationResult = await sendNotification({
+            user: friendId,
+            type: "group_added",
+            title: "You have been added to a group",
+            message: `You have been added to a group called "${group.name}" by ${creatorUser.name}`,
             data: {
-              inviteId: invite._id,
               groupId: group._id,
-              inviterId: createdBy,
-              inviterName: inviterUser.name,
-              inviterProfilePicture: inviterUser.profilePicture,
+              creatorId: createdBy,
+              creatorName: creatorUser.name,
+              creatorProfilePicture: creatorUser.profilePicture,
               groupName: group.name,
               groupDescription: group.description,
               groupAvatar: group.avatar,
-              invitedUsersCount: invitedUsers.length,
             },
           });
+
+          if (notificationResult) {
+            console.log(
+              `✅ Notification sent successfully for user ${friendId}`
+            );
+            return { friendId: String(friendId), status: "ok" };
+          } else {
+            console.log(`⚠️ Notification failed for user ${friendId}`);
+            return {
+              friendId: String(friendId),
+              status: "notification_failed",
+            };
+          }
+        } catch (err) {
+          console.error(
+            `❌ Failed to send notification to ${friendId}:`,
+            err.message
+          );
+          return {
+            friendId: String(friendId),
+            status: "notification_error",
+            error: err.message,
+          };
+        }
+      });
+
+      // Wait for all notifications to be sent
+      const notificationResults = await Promise.allSettled(
+        notificationPromises
+      );
+      const processedNotifications = notificationResults.map(
+        (result, index) => {
+          if (result.status === "fulfilled") {
+            return result.value;
+          } else {
+            return {
+              friendId: String(uniqueMemberIds[index] || ""),
+              status: "notification_error",
+              error: result.reason?.message || "Unknown error",
+            };
+          }
+        }
+      );
+
+      const successfulNotifications = processedNotifications.filter(
+        (r) => r.status === "ok"
+      );
+      console.log(
+        `📨 Notification results: ${successfulNotifications.length}/${uniqueMemberIds.length} sent successfully`
+      );
+
+      // Log group joined activity for each added member
+      for (const friendId of uniqueMemberIds) {
+        try {
+          const friendUser = await User.findById(friendId).select(
+            "name profilePicture"
+          );
+          if (friendUser) {
+            await Activity.create({
+              group: group._id,
+              actor: friendId,
+              type: "group_joined",
+              summary: `${friendUser.name} was added to the group`,
+              data: {
+                groupId: group._id,
+                addedUserId: friendId,
+                addedUserName: friendUser.name,
+                addedUserProfilePicture: friendUser.profilePicture,
+                groupName: group.name,
+                addedBy: createdBy,
+                addedByName: creatorUser.name,
+              },
+            });
+          }
         } catch (activityErr) {
           console.error(
-            `⚠️ Failed to create activity log:`,
+            `⚠️ Failed to create activity log for user ${friendId}:`,
             activityErr.message
           );
           // Don't fail the request if activity creation fails
         }
-      } catch (err) {
-        console.error(
-          `❌ Failed to create/update invite:`,
-          err.message,
-          err.stack
-        );
-        // Don't fail the entire request, just log the error
       }
     }
-    // Step 5: Fetch updated group with populated invitedUsers
+
+    // Step 5: Fetch updated group with populated members
     const updatedGroup = await Group.findById(group._id)
-      .populate("invitedUsers", "name email profilePicture")
-      .populate("members", "name email profilePicture");
+      .populate("members", "name email profilePicture")
+      .populate("createdBy", "name email profilePicture");
 
     // Step 6: Respond success
     return res.status(201).json({
       success: true,
       msg:
         uniqueMemberIds.length > 0
-          ? "Group created and invites sent successfully"
+          ? "Group created and members added successfully"
           : "Group created successfully",
       data: updatedGroup,
     });
@@ -320,359 +273,12 @@ export const getMyGroups = async (req, res) => {
   }
 };
 
-export const inviteToGroup = async (req, res) => {
-  try {
-    const { groupId, userId } = req.body;
-    if (!groupId || !userId)
-      return res
-        .status(400)
-        .json({ success: false, msg: "groupId and userId required" });
-    const inviter = req.user?.id;
-
-    // Get group and inviter details for the notification
-    const group = await Group.findById(groupId).select(
-      "name description avatar members"
-    );
-    if (!group) {
-      return res.status(404).json({ success: false, msg: "Group not found" });
-    }
-
-    const inviterUser = await User.findById(inviter).select(
-      "name email profilePicture"
-    );
-    if (!inviterUser) {
-      return res.status(404).json({ success: false, msg: "Inviter not found" });
-    }
-
-    const invitedUserId = new mongoose.Types.ObjectId(userId);
-
-    // Find or create invite for this group
-    let invite = await Invite.findOne({ group: groupId });
-
-    if (invite) {
-      // Check if user is already invited
-      const isAlreadyInvited = invite.invitedUsers.some(
-        (u) => String(u.userId) === String(invitedUserId)
-      );
-
-      if (isAlreadyInvited) {
-        return res
-          .status(409)
-          .json({ success: false, msg: "User already invited" });
-      }
-
-      // Add user to existing invite
-      invite.invitedUsers.push({ userId: invitedUserId, status: "pending" });
-      await invite.save();
-    } else {
-      // Create new invite
-      invite = await Invite.create({
-        group: new mongoose.Types.ObjectId(groupId),
-        invitedBy: new mongoose.Types.ObjectId(inviter),
-        invitedUsers: [{ userId: invitedUserId, status: "pending" }],
-      });
-    }
-
-    // Add user to invitedUsers array in group
-    await Group.updateOne(
-      { _id: groupId },
-      { $addToSet: { invitedUsers: userId } }
-    );
-
-    await Activity.create({
-      group: groupId,
-      actor: inviter,
-      type: "group_invite",
-      summary: `Group invite sent`,
-      data: {
-        inviteId: invite._id,
-        groupId: groupId,
-        inviterId: inviter,
-        inviterName: inviterUser.name,
-        inviterProfilePicture: inviterUser.profilePicture,
-        groupName: group.name,
-        groupDescription: group.description,
-        groupAvatar: group.avatar,
-        groupMembersCount: group.members.length,
-      },
-    });
-
-    await sendNotification({
-      user: userId,
-      type: "group_invite",
-      title: "You have a new group invite",
-      message: `${inviterUser.name} invited you to join "${group.name}" group`,
-      data: {
-        inviteId: invite._id,
-        groupId: groupId,
-        inviterId: inviter,
-        inviterName: inviterUser.name,
-        inviterProfilePicture: inviterUser.profilePicture,
-        groupName: group.name,
-        groupDescription: group.description,
-        groupAvatar: group.avatar,
-        groupMembersCount: group.members.length,
-      },
-    });
-
-    return res
-      .status(201)
-      .json({ success: true, msg: "Invite sent successfully", data: invite });
-  } catch (e) {
-    console.error("Error in inviteToGroup:", e);
-    if (e?.code === 11000)
-      return res
-        .status(409)
-        .json({ success: false, msg: "Invite already exists" });
-    return res
-      .status(500)
-      .json({ success: false, msg: "Failed to send invite", error: e.message });
-  }
-};
-
-export const respondToInvite = async (req, res) => {
-  try {
-    const { inviteId, action } = req.body; // action: accepted | declined
-    const userId = req.user?.id;
-
-    // Get invite with populated data
-    const invite = await Invite.findById(inviteId)
-      .populate("group", "name description avatar members")
-      .populate("invitedBy", "name email profilePicture")
-      .populate("invitedUsers.userId", "name email profilePicture");
-
-    if (!invite) {
-      return res.status(404).json({ success: false, msg: "Invite not found" });
-    }
-
-    // Find the user's entry in invitedUsers array
-    // Handle both populated (User object) and unpopulated (ObjectId) userId
-    const userInviteIndex = invite.invitedUsers.findIndex((u) => {
-      const uId = u.userId?._id || u.userId; // Handle populated or unpopulated
-      return String(uId) === String(userId);
-    });
-
-    if (userInviteIndex === -1) {
-      return res
-        .status(404)
-        .json({ success: false, msg: "You are not invited to this group" });
-    }
-
-    // Check if user has already responded
-    const currentStatus = invite.invitedUsers[userInviteIndex].status;
-    if (currentStatus !== "pending") {
-      return res.status(400).json({
-        success: false,
-        msg: "You have already responded to this invite",
-      });
-    }
-
-    // Update user's status
-    invite.invitedUsers[userInviteIndex].status =
-      action === "accepted" ? "accepted" : "declined";
-    await invite.save();
-
-    // Get the user details for notifications (populated userId)
-    const userInviteEntry = invite.invitedUsers[userInviteIndex];
-    const respondingUser = userInviteEntry.userId; // This is populated, so it's the User object
-
-    if (!respondingUser || !respondingUser._id) {
-      return res.status(400).json({
-        success: false,
-        msg: "User not found in invite",
-      });
-    }
-
-    const userStatus = invite.invitedUsers[userInviteIndex].status;
-
-    if (userStatus === "accepted") {
-      // Add user to group members and remove from invitedUsers
-      await Group.updateOne(
-        { _id: invite.group._id },
-        {
-          $addToSet: { members: userId },
-          $pull: { invitedUsers: userId },
-        }
-      );
-
-      // Get updated group with all members
-      const updatedGroup = await Group.findById(invite.group._id).populate(
-        "members",
-        "name email profilePicture"
-      );
-
-      // Create activity for invite acceptance
-      await Activity.create({
-        group: invite.group._id,
-        actor: userId,
-        type: "invite_responded",
-        summary: `${respondingUser.name} accepted the invite`,
-        data: {
-          inviteId: invite._id,
-          acceptedBy: userId,
-          acceptedByName: respondingUser.name,
-          acceptedByProfilePicture: respondingUser.profilePicture,
-        },
-      });
-
-      // Create activity for group joined
-      await Activity.create({
-        group: invite.group._id,
-        actor: userId,
-        type: "group_joined",
-        summary: `${respondingUser.name} joined the group`,
-        data: {
-          joinedUser: userId,
-          joinedUserName: respondingUser.name,
-          joinedUserProfilePicture: respondingUser.profilePicture,
-          groupName: invite.group.name,
-        },
-      });
-
-      // Notify the inviter
-      await sendNotification({
-        user: invite.invitedBy._id,
-        type: "invite_accepted",
-        title: "Invite accepted",
-        message: `${respondingUser.name} accepted your invite to join "${invite.group.name}"`,
-        data: {
-          inviteId: invite._id,
-          groupId: invite.group._id,
-          groupName: invite.group.name,
-          acceptedBy: userId,
-          acceptedByName: respondingUser.name,
-          acceptedByProfilePicture: respondingUser.profilePicture,
-        },
-      });
-
-      // Notify all other group members about the new member
-      const otherMembers = updatedGroup.members.filter(
-        (member) =>
-          String(member._id) !== String(userId) &&
-          String(member._id) !== String(invite.invitedBy._id)
-      );
-
-      for (const member of otherMembers) {
-        await sendNotification({
-          user: member._id,
-          type: "group_joined",
-          title: "New member joined",
-          message: `${respondingUser.name} joined "${invite.group.name}"`,
-          data: {
-            groupId: invite.group._id,
-            groupName: invite.group.name,
-            newMember: userId,
-            newMemberName: respondingUser.name,
-            newMemberProfilePicture: respondingUser.profilePicture,
-          },
-        });
-      }
-
-      // Calculate initial balance for the new member
-      const bills = await Bill.find({ group: invite.group._id });
-      const settlements = await Settlement.find({ group: invite.group._id });
-
-      let netBalance = 0;
-      let amountOwed = 0;
-      let amountToReceive = 0;
-
-      // Process bills
-      for (const bill of bills) {
-        for (const split of bill.splitDetails) {
-          if (String(split.from) === String(userId)) {
-            netBalance -= split.amount;
-            amountOwed += split.amount;
-          }
-          if (String(split.to) === String(userId)) {
-            netBalance += split.amount;
-            amountToReceive += split.amount;
-          }
-        }
-      }
-
-      // Process settlements
-      for (const settlement of settlements) {
-        if (String(settlement.from) === String(userId)) {
-          netBalance -= settlement.amount;
-          amountOwed += settlement.amount;
-        }
-        if (String(settlement.to) === String(userId)) {
-          netBalance += settlement.amount;
-          amountToReceive += settlement.amount;
-        }
-      }
-
-      const response = {
-        invite: invite,
-        group: {
-          _id: invite.group._id,
-          name: invite.group.name,
-          description: invite.group.description,
-          avatar: invite.group.avatar,
-          memberCount: updatedGroup.members.length,
-        },
-        userBalance: {
-          net: netBalance,
-          amountOwed: amountOwed,
-          amountToReceive: amountToReceive,
-        },
-      };
-
-      return res.status(200).json({
-        success: true,
-        msg: "Invite accepted successfully",
-        data: response,
-      });
-    } else {
-      // Handle declined invite
-      await Activity.create({
-        group: invite.group._id,
-        actor: userId,
-        type: "invite_responded",
-        summary: `${respondingUser.name} declined the invite`,
-        data: {
-          inviteId: invite._id,
-          declinedBy: userId,
-          declinedByName: respondingUser.name,
-          declinedByProfilePicture: respondingUser.profilePicture,
-        },
-      });
-
-      await sendNotification({
-        user: invite.invitedBy._id,
-        type: "invite_declined",
-        title: "Invite declined",
-        message: `${respondingUser.name} declined your invite to join "${invite.group.name}"`,
-        data: {
-          inviteId: invite._id,
-          groupId: invite.group._id,
-          groupName: invite.group.name,
-          declinedBy: userId,
-          declinedByName: respondingUser.name,
-          declinedByProfilePicture: respondingUser.profilePicture,
-        },
-      });
-
-      return res.status(200).json({
-        success: true,
-        msg: "Invite declined",
-        data: { invite },
-      });
-    }
-  } catch (e) {
-    console.error("Error in respondToInvite:", e);
-    return res.status(500).json({
-      success: false,
-      msg: "Failed to respond to invite",
-      error: e.message,
-    });
-  }
-};
-
 export const getGroupDetails = async (req, res) => {
   try {
     const { groupId } = req.params;
     const userId = req.user?.id;
+
+    console.log(groupId, userId);
 
     if (!groupId) {
       return res
@@ -680,7 +286,7 @@ export const getGroupDetails = async (req, res) => {
         .json({ success: false, msg: "Group ID is required" });
     }
 
-    // Get group details with populated members, invitedUsers, and creator
+    // Get group details with populated members and creator
     const group = await Group.findById(groupId)
       .populate({
         path: "createdBy",
@@ -688,10 +294,6 @@ export const getGroupDetails = async (req, res) => {
       })
       .populate({
         path: "members",
-        select: "name email profilePicture _id",
-      })
-      .populate({
-        path: "invitedUsers",
         select: "name email profilePicture _id",
       });
 
@@ -706,13 +308,6 @@ export const getGroupDetails = async (req, res) => {
 
     // Check if user is the creator
     const isCreator = String(group.createdBy._id) === String(userId);
-
-    // Check if user has a pending invite (user is in invitedUsers array with pending status)
-    const pendingInvite = await Invite.findOne({
-      group: groupId,
-      "invitedUsers.userId": userId,
-      "invitedUsers.status": "pending",
-    });
 
     // Calculate user's balance in this group if they are a member
     let userBalance = null;
@@ -763,8 +358,6 @@ export const getGroupDetails = async (req, res) => {
       membershipStatus = "creator";
     } else if (isMember) {
       membershipStatus = "member";
-    } else if (pendingInvite) {
-      membershipStatus = "invited";
     }
 
     const response = {
@@ -775,9 +368,7 @@ export const getGroupDetails = async (req, res) => {
         avatar: group.avatar,
         createdBy: group.createdBy,
         members: group.members,
-        invitedUsers: group.invitedUsers || [],
         memberCount: group.members.length,
-        invitedUsersCount: (group.invitedUsers || []).length,
         createdAt: group.createdAt,
         updatedAt: group.updatedAt,
       },
@@ -785,8 +376,6 @@ export const getGroupDetails = async (req, res) => {
         isMember,
         isCreator,
         membershipStatus,
-        hasPendingInvite: !!pendingInvite,
-        pendingInviteId: pendingInvite?._id || null,
         balance: userBalance,
       },
     };
@@ -801,38 +390,5 @@ export const getGroupDetails = async (req, res) => {
     return res
       .status(500)
       .json({ success: false, msg: "Failed to fetch group details" });
-  }
-};
-
-export const getMyInvites = async (req, res) => {
-  try {
-    const userId = req.user?.id;
-    // Find invites where user is in the invitedUsers array
-    const invites = await Invite.find({ "invitedUsers.userId": userId })
-      .populate("group", "name description avatar createdBy")
-      .populate("invitedBy", "name email profilePicture")
-      .populate("invitedUsers.userId", "name email profilePicture")
-      .populate("group.createdBy", "name email profilePicture")
-      .sort({ createdAt: -1 });
-
-    // Filter to only include invites where user has pending status
-    const pendingInvites = invites.filter((invite) => {
-      const userInvite = invite.invitedUsers.find((u) => {
-        const uId = u.userId?._id || u.userId; // Handle populated or unpopulated
-        return String(uId) === String(userId);
-      });
-      return userInvite && userInvite.status === "pending";
-    });
-
-    return res.status(200).json({
-      success: true,
-      msg: "Invites fetched successfully",
-      data: pendingInvites,
-    });
-  } catch (e) {
-    console.error("Error in getMyInvites:", e);
-    return res
-      .status(500)
-      .json({ success: false, msg: "Failed to fetch invites" });
   }
 };

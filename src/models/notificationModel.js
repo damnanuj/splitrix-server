@@ -6,10 +6,7 @@ const NotificationSchema = new Schema(
     type: {
       type: String,
       enum: [
-        "group_invite",
-        "invite_accepted",
-        "invite_declined",
-        "invite_expired",
+        "group_added",
         "group_joined",
         "bill_added",
         "bill_updated",
