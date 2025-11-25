@@ -6,13 +6,16 @@ const UserSchema = new Schema(
       type: String,
       required: true,
       trim: true,
+      index: true, // 🔥 for searching users by name
     },
+
     email: {
       type: String,
       required: true,
       unique: true,
       trim: true,
       lowercase: true,
+      index: true, // 🔥 fast login, fast lookups
     },
 
     password: {
@@ -20,10 +23,12 @@ const UserSchema = new Schema(
       minlength: [6, "Password must be at least 6 characters"],
       select: false,
     },
+
     profilePicture: {
       type: String,
       default: "",
     },
+
     friends: [
       {
         type: mongoose.Schema.Types.ObjectId,
@@ -33,5 +38,8 @@ const UserSchema = new Schema(
   },
   { timestamps: true }
 );
+
+// 🔥 Index for querying users by friend relationships
+UserSchema.index({ friends: 1 });
 
 export const User = mongoose.model("User", UserSchema);
