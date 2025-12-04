@@ -17,6 +17,11 @@ const UserSchema = new Schema(
       lowercase: true,
       index: true, // 🔥 fast login, fast lookups
     },
+    googleId: {
+      type: String,
+      unique: true,
+      sparse: true,
+    },
 
     password: {
       type: String,
