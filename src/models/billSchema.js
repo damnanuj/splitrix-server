@@ -48,11 +48,6 @@ const billSchema = new Schema(
     participants: [
       { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true },
     ],
-    splitType: {
-      type: String,
-      enum: ["amount", "share", "percent"],
-      required: true,
-    },
     // per-user share definition (frontend sends resolved amounts)
     shares: [
       {
@@ -67,7 +62,10 @@ const billSchema = new Schema(
     items: [itemSchema],
     splitDetails: [splitSchema],
   },
-  { timestamps: true }
+  {
+    timestamps: true,
+    versionKey: false, // avoid __v noisy field
+  }
 );
 
 billSchema.index({ group: 1, createdAt: -1 });

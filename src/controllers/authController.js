@@ -113,7 +113,7 @@ export const handleGoogleAuth = async (req, res) => {
   try {
     const { idToken } = req.body;
 
-    // console.log(idToken, "idToken");
+    console.log(idToken, "idToken");
 
     if (!idToken) {
       return res.status(400).json({ success: false, msg: "Missing idToken" });

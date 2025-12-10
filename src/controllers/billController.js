@@ -1,7 +1,7 @@
 import { Bill } from "../models/billSchema.js";
 import { Activity } from "../models/activityModel.js";
 import { sendNotification } from "../utils/notifications/send.js";
-import { Group } from "../models/groupModel.js";
+import { Settlement } from "../models/settlementModel.js";
 
 const toIdString = (value) => {
   if (!value) return null;
@@ -46,28 +46,87 @@ const buildYourStake = (balance, isParticipant) => {
   return { amount: 0, displayMsg: "You're settled" };
 };
 
+// Aggregate pairwise balances within a group, netting opposite directions.
+const computeNetGroupBalances = async (groupId) => {
+  const bills = await Bill.find({ group: groupId }, { splitDetails: 1 }).lean();
+  const settlements = await Settlement.find(
+    { group: groupId },
+    { from: 1, to: 1, amount: 1 }
+  ).lean();
+
+  const ledger = new Map(); // key: "low|high" -> signed amount (low owes high if >0)
+
+  const applyEdge = (from, to, amount) => {
+    const amt = Number(amount);
+    if (!from || !to || !Number.isFinite(amt) || amt <= 0) return;
+
+    const a = String(from);
+    const b = String(to);
+    if (a === b) return;
+
+    const low = a < b ? a : b;
+    const high = a < b ? b : a;
+    const key = `${low}|${high}`;
+    const sign = a < b ? 1 : -1;
+
+    const current = ledger.get(key) || 0;
+    ledger.set(key, current + sign * amt);
+  };
+
+  for (const bill of bills) {
+    for (const split of bill.splitDetails || []) {
+      applyEdge(split.from, split.to, split.amount);
+    }
+  }
+  for (const settlement of settlements) {
+    applyEdge(settlement.from, settlement.to, settlement.amount);
+  }
+
+  const balances = [];
+  for (const [key, value] of ledger.entries()) {
+    const [low, high] = key.split("|");
+    const rounded = Math.round(value * 100) / 100;
+    if (Math.abs(rounded) < 0.01) continue; // effectively settled
+
+    if (rounded > 0) {
+      balances.push({ from: low, to: high, amount: rounded });
+    } else {
+      balances.push({ from: high, to: low, amount: Math.abs(rounded) });
+    }
+  }
+
+  return balances;
+};
+
 export const createBill = async (req, res) => {
   try {
-    const {
-      title,
-      amount,
-      group,
-      paidBy,
-      splitType,
-      shares = [],
-      createdBy,
-    } = req.body;
+    const { title, amount, group, paidBy, shares = [], createdBy } = req.body;
 
-    if (!title || amount == null || !group || !paidBy || !shares.length) {
-      return res.status(400).json({ success: false, msg: "Missing fields" });
+    const resolvedAmount = Number(amount);
+
+    if (
+      !title ||
+      !group ||
+      !paidBy ||
+      !Array.isArray(shares) ||
+      shares.length === 0 ||
+      Number.isNaN(resolvedAmount) ||
+      resolvedAmount < 0
+    ) {
+      return res
+        .status(400)
+        .json({ success: false, msg: "Missing or invalid fields" });
     }
 
     const normalizedShares = shares
       .map((share) => ({
-        user: share.user,
-        amount: Number(share.amount),
+        user: share?.user,
+        amount: Number(share?.amount),
       }))
-      .filter((share) => share.user && !Number.isNaN(share.amount));
+      .filter(
+        (share) =>
+          share.user && Number.isFinite(share.amount) && share.amount >= 0
+      );
 
     if (normalizedShares.length === 0) {
       return res
@@ -75,35 +134,28 @@ export const createBill = async (req, res) => {
         .json({ success: false, msg: "Shares payload is invalid" });
     }
 
-    const splitMode = splitType || "amount";
-    const allowedSplitModes = ["amount", "share", "percent"];
-    if (!allowedSplitModes.includes(splitMode)) {
-      return res
-        .status(400)
-        .json({ success: false, msg: "Invalid splitType provided" });
-    }
-
     const totalShares = normalizedShares.reduce(
       (sum, share) => sum + share.amount,
       0
     );
-    if (Math.round(totalShares * 100) !== Math.round(Number(amount) * 100)) {
+    if (Math.round(totalShares * 100) !== Math.round(resolvedAmount * 100)) {
       return res.status(400).json({
         success: false,
         msg: "Shares must add up to the bill amount",
       });
     }
 
-    const participantSet = new Set(
-      normalizedShares.map((share) => String(share.user))
+    const participantIds = Array.from(
+      new Set(normalizedShares.map((share) => String(share.user)))
     );
-    const participantIds = Array.from(participantSet);
     const participants = Array.from(
       new Set([...participantIds, String(paidBy)])
     );
 
     const splitDetails = normalizedShares
-      .filter((share) => String(share.user) !== String(paidBy))
+      .filter(
+        (share) => String(share.user) !== String(paidBy) && share.amount > 0
+      )
       .map((share) => ({
         from: share.user,
         to: paidBy,
@@ -114,12 +166,11 @@ export const createBill = async (req, res) => {
 
     const bill = await Bill.create({
       title,
-      amount,
+      amount: resolvedAmount,
       group,
       paidBy,
       createdBy: creatorId,
       participants,
-      splitType: splitMode,
       shares: normalizedShares,
       items: [],
       splitDetails,
@@ -151,9 +202,13 @@ export const createBill = async (req, res) => {
       });
     }
 
-    res
-      .status(201)
-      .json({ success: true, msg: "Bill created successfully", data: bill });
+    const balances = await computeNetGroupBalances(group);
+
+    res.status(201).json({
+      success: true,
+      msg: "Bill created successfully",
+      data: { bill, balances },
+    });
   } catch (error) {
     console.error("Error creating bill:", error);
     res.status(500).json({ success: false, msg: "Server error" });
@@ -171,116 +226,76 @@ export const getGroupBills = async (req, res) => {
         .json({ success: false, msg: "Group ID is required" });
     }
 
-    const group = await Group.findById(groupId)
-      .populate("members", "name email profilePicture")
-      .lean();
-
-    if (!group) {
-      return res.status(404).json({ success: false, msg: "Group not found" });
-    }
-
-    const isGroupMember = group.members.some(
-      (member) => toIdString(member._id || member) === requesterId
-    );
-
-    if (!isGroupMember) {
-      return res
-        .status(403)
-        .json({ success: false, msg: "You are not a member of this group" });
-    }
-
-    const membersDirectory = (group.members || []).reduce((acc, member) => {
-      const memberId = toIdString(member._id || member);
-      if (!memberId) return acc;
-      acc[memberId] = {
-        name: member.name,
-        email: member.email,
-        avatar: member.profilePicture || "",
-      };
-      return acc;
-    }, {});
-
-    const hydrateUser = (user) => {
-      const userId = toIdString(user);
-      if (!userId) return null;
-      const cached = membersDirectory[userId];
-      if (cached) {
-        return {
-          id: userId,
-          name: cached.name,
-          email: cached.email,
-          avatar: cached.avatar,
-        };
-      }
-      if (typeof user === "object") {
-        return {
-          id: userId,
-          name: user.name,
-          email: user.email,
-          avatar: user.profilePicture || "",
-        };
-      }
-      return { id: userId, name: "", email: "", avatar: "" };
-    };
-
+    // Fetch bills with user fields populated
     const bills = await Bill.find({ group: groupId })
       .sort({ createdAt: -1 })
       .populate("paidBy", "name email profilePicture")
       .populate("createdBy", "name email profilePicture")
-      .populate("participants", "name email profilePicture")
       .populate("shares.user", "name email profilePicture")
-      .populate("splitDetails.from", "name email profilePicture")
-      .populate("splitDetails.to", "name email profilePicture")
-      .populate("items.paidBy", "name email profilePicture")
-      .populate("items.involved", "name email profilePicture")
       .lean({ virtuals: true });
 
+    // Serialize each bill
     const serializedBills = bills.map((bill) => {
-      const shares = bill.shares || [];
-      const payerId = toIdString(bill.paidBy);
       const billAmount = Number(bill.amount) || 0;
+      const payerId = toIdString(bill.paidBy);
 
-      const splits = shares.map((share) => {
-        const userId = toIdString(share.user);
+      // Extract payer info from populated paidBy
+      const payerInfo = bill.paidBy || {};
+      const paidBy = {
+        id: payerId,
+        name: payerInfo.name || "",
+        email: payerInfo.email || "",
+        avatar: payerInfo.profilePicture || "",
+      };
+
+      // Convert shares[] into proper split data
+      const splits = (bill.shares || []).map((share) => {
+        const uid = toIdString(share.user);
         const shareAmount = Number(share.amount) || 0;
-        const paidAmount = userId === payerId ? billAmount : 0;
+
+        // User paid full amount ONLY if they are the payer
+        const paidAmount = uid === payerId ? billAmount : 0;
         const balance = Number((paidAmount - shareAmount).toFixed(2));
+
+        // Extract user info from populated share.user
+        const userInfo = share.user || {};
         return {
-          user: hydrateUser(share.user),
+          user: {
+            id: uid,
+            name: userInfo.name || "",
+            email: userInfo.email || "",
+            avatar: userInfo.profilePicture || "",
+          },
           share: shareAmount,
           paid: paidAmount,
           balance,
         };
       });
 
-      const requesterSplit = splits.find(
-        (split) => requesterId && split.userId === requesterId
-      );
+      // Check requester participation
+      const requesterSplit = splits.find((s) => s.user.id === requesterId);
       const isParticipant = !!requesterSplit;
-      const stakeBalance = requesterSplit ? requesterSplit.balance : 0;
+      const stakeBalance = requesterSplit?.balance || 0;
 
       return {
         id: toIdString(bill._id),
         description: bill.title,
         amount: billAmount,
         date: bill.createdAt,
-        payerId,
-        splitType: bill.splitType,
+        paidBy,
         splits,
         yourStake: buildYourStake(stakeBalance, isParticipant),
       };
     });
 
+    // Return response
     return res.status(200).json({
       success: true,
       msg: "Bills fetched successfully",
-      data: {
-        group: { id: groupId },
-        members: membersDirectory,
-        expenses: serializedBills,
-      },
+      data: serializedBills,
     });
-  } catch (e) {
+  } catch (err) {
+    console.error("getGroupBills error:", err);
     return res
       .status(500)
       .json({ success: false, msg: "Failed to fetch bills" });

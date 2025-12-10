@@ -200,15 +200,12 @@ export const getMyGroups = async (req, res) => {
   try {
     const userId = req.user?.id;
     const groups = await Group.find({ members: userId })
+      .select("-members") // exclude members array from response
       .sort({
         createdAt: -1,
       })
       .populate({
         path: "createdBy",
-        select: "name email profilePicture _id",
-      })
-      .populate({
-        path: "members",
         select: "name email profilePicture _id",
       });
 
@@ -278,7 +275,7 @@ export const getGroupDetails = async (req, res) => {
     const { groupId } = req.params;
     const userId = req.user?.id;
 
-    console.log(groupId, userId);
+    // console.log(groupId, userId);
 
     if (!groupId) {
       return res
@@ -301,83 +298,16 @@ export const getGroupDetails = async (req, res) => {
       return res.status(404).json({ success: false, msg: "Group not found" });
     }
 
-    // Check if user is a member
-    const isMember = group.members.some(
-      (member) => String(member._id) === String(userId)
-    );
-
-    // Check if user is the creator
-    const isCreator = String(group.createdBy._id) === String(userId);
-
-    // Calculate user's balance in this group if they are a member
-    let userBalance = null;
-    if (isMember) {
-      const bills = await Bill.find({ group: groupId });
-      const settlements = await Settlement.find({ group: groupId });
-
-      let netBalance = 0;
-      let amountOwed = 0;
-      let amountToReceive = 0;
-
-      // Process bills
-      for (const bill of bills) {
-        for (const split of bill.splitDetails) {
-          if (String(split.from) === String(userId)) {
-            netBalance -= split.amount;
-            amountOwed += split.amount;
-          }
-          if (String(split.to) === String(userId)) {
-            netBalance += split.amount;
-            amountToReceive += split.amount;
-          }
-        }
-      }
-
-      // Process settlements
-      for (const settlement of settlements) {
-        if (String(settlement.from) === String(userId)) {
-          netBalance -= settlement.amount;
-          amountOwed += settlement.amount;
-        }
-        if (String(settlement.to) === String(userId)) {
-          netBalance += settlement.amount;
-          amountToReceive += settlement.amount;
-        }
-      }
-
-      userBalance = {
-        net: netBalance,
-        amountOwed: amountOwed,
-        amountToReceive: amountToReceive,
-      };
-    }
-
-    // Determine membership status
-    let membershipStatus = "not_member";
-    if (isCreator) {
-      membershipStatus = "creator";
-    } else if (isMember) {
-      membershipStatus = "member";
-    }
-
     const response = {
-      group: {
-        _id: group._id,
-        name: group.name,
-        description: group.description,
-        avatar: group.avatar,
-        createdBy: group.createdBy,
-        members: group.members,
-        memberCount: group.members.length,
-        createdAt: group.createdAt,
-        updatedAt: group.updatedAt,
-      },
-      userMembership: {
-        isMember,
-        isCreator,
-        membershipStatus,
-        balance: userBalance,
-      },
+      _id: group._id,
+      name: group.name,
+      description: group.description,
+      avatar: group.avatar,
+      createdBy: group.createdBy,
+      members: group.members,
+      memberCount: group.members.length,
+      createdAt: group.createdAt,
+      updatedAt: group.updatedAt,
     };
 
     return res.status(200).json({
@@ -390,5 +320,97 @@ export const getGroupDetails = async (req, res) => {
     return res
       .status(500)
       .json({ success: false, msg: "Failed to fetch group details" });
+  }
+};
+
+export const getBalancesSummaryForUser = async (req, res) => {
+  try {
+    const { groupId } = req.params;
+    const userId = String(req.user?.id || "");
+
+    if (!groupId) {
+      return res
+        .status(400)
+        .json({ success: false, msg: "Group ID is required" });
+    }
+
+    // Ensure the group exists and the user belongs to it
+    const group = await Group.findById(groupId).populate({
+      path: "members",
+      select: "name _id",
+    });
+
+    if (!group) {
+      return res.status(404).json({ success: false, msg: "Group not found" });
+    }
+
+    const isMember = group.members.some(
+      (member) => String(member._id) === userId
+    );
+    if (!isMember) {
+      return res.status(403).json({
+        success: false,
+        msg: "You are not a member of this group",
+      });
+    }
+
+    // Build a quick lookup for member names
+    const memberNameById = new Map(
+      group.members.map((m) => [String(m._id), m.name || ""])
+    );
+
+    // Track net amounts between the logged-in user and each member
+    const netWithMember = new Map();
+    const addAmount = (memberId, amount) => {
+      if (String(memberId) === userId) return; // skip self
+      const key = String(memberId);
+      netWithMember.set(key, (netWithMember.get(key) || 0) + amount);
+    };
+
+    // Pull only the fields we need
+    const bills = await Bill.find({ group: groupId }).select("splitDetails");
+    const settlements = await Settlement.find({ group: groupId }).select(
+      "from to amount"
+    );
+
+    // Bills: splitDetails.from owes splitDetails.to
+    for (const bill of bills) {
+      for (const split of bill.splitDetails || []) {
+        if (String(split.from) === userId) addAmount(split.to, -split.amount);
+        if (String(split.to) === userId) addAmount(split.from, split.amount);
+      }
+    }
+
+    // Settlements: from pays to
+    for (const settlement of settlements) {
+      if (String(settlement.from) === userId) {
+        addAmount(settlement.to, -settlement.amount);
+      }
+      if (String(settlement.to) === userId) {
+        addAmount(settlement.from, settlement.amount);
+      }
+    }
+
+    const balances = Array.from(netWithMember.entries())
+      .map(([memberId, amount]) => ({
+        memberId,
+        name: memberNameById.get(memberId) || "Unknown",
+        amount,
+      }))
+      // keep only members where there is any balance to settle
+      .filter((b) => b.amount !== 0);
+
+    return res.status(200).json({
+      success: true,
+      msg: "Balance summary fetched successfully",
+      data: balances,
+    });
+  } catch (e) {
+    console.error("Error in getBalancesSummaryForUser:", e);
+    return res.status(500).json({
+      success: false,
+      msg: "Failed to fetch balance summary",
+      error: e.message,
+    });
   }
 };

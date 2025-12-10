@@ -4,12 +4,18 @@ import {
   createGroup,
   getMyGroups,
   getGroupDetails,
+  getBalancesSummaryForUser,
 } from "../controllers/groupController.js";
 
 const router = express.Router();
 
 router.post("/", isAuthenticated, createGroup);
 router.get("/mine", isAuthenticated, getMyGroups);
+router.get(
+  "/:groupId/balances-summary",
+  isAuthenticated,
+  getBalancesSummaryForUser
+);
 router.get("/:groupId", isAuthenticated, getGroupDetails);
 
 export default router;
