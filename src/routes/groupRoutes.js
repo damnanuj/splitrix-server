@@ -5,6 +5,7 @@ import {
   getMyGroups,
   getGroupDetails,
   getBalancesSummaryForUser,
+  addMembersToGroup,
 } from "../controllers/groupController.js";
 
 const router = express.Router();
@@ -12,10 +13,11 @@ const router = express.Router();
 router.post("/", isAuthenticated, createGroup);
 router.get("/mine", isAuthenticated, getMyGroups);
 router.get(
-  "/:groupId/balances-summary",
+  "/balances-summary/:groupId",
   isAuthenticated,
   getBalancesSummaryForUser
 );
+router.put("/add-members/:groupId", isAuthenticated, addMembersToGroup);
 router.get("/:groupId", isAuthenticated, getGroupDetails);
 
 export default router;
