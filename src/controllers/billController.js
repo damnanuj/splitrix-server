@@ -2,6 +2,7 @@ import { Bill } from "../models/billSchema.js";
 import { Activity } from "../models/activityModel.js";
 import { sendNotification } from "../utils/notifications/send.js";
 import { Settlement } from "../models/settlementModel.js";
+import { User } from "../models/userModel.js";
 
 const toIdString = (value) => {
   if (!value) return null;
@@ -105,7 +106,6 @@ export const createBill = async (req, res) => {
     const resolvedAmount = Number(amount);
 
     if (
-      !title ||
       !group ||
       !paidBy ||
       !Array.isArray(shares) ||
@@ -165,7 +165,7 @@ export const createBill = async (req, res) => {
     const creatorId = req.user?.id || createdBy || paidBy;
 
     const bill = await Bill.create({
-      title,
+      title: title && title.trim() ? title.trim() : "an expense",
       amount: resolvedAmount,
       group,
       paidBy,
@@ -190,15 +190,35 @@ export const createBill = async (req, res) => {
         participants,
       },
     });
-    // notify participants
+
+    // notify participants with a richer, per-user message
+    const payerDoc = await User.findById(paidBy).select("name").lean();
+    const payerName = payerDoc?.name || "Someone";
+    const billLabel = title && title.trim() ? title.trim() : "an expense";
+
     for (const uid of participantIds) {
       if (String(uid) === String(actorId)) continue;
+
+      const share = normalizedShares.find(
+        (s) => String(s.user) === String(uid)
+      );
+      const shareAmount = Number(share?.amount || 0);
+
+      let stakePart = "You're settled for this one.";
+      if (shareAmount > 0) {
+        stakePart = `You owe ${formatCurrency(shareAmount)}.`;
+      }
+
+      const message = `${payerName} paid ${formatCurrency(
+        resolvedAmount
+      )} for ${billLabel}. ${stakePart}`;
+
       await sendNotification({
         user: uid,
         type: "bill_added",
-        title: "New bill added",
-        message: `You were added to "${title}"`,
-        data: { billId: bill._id, group },
+        title: `${billLabel}`,
+        message,
+        data: { billId: bill._id, groupId: group },
       });
     }
 

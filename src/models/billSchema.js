@@ -29,7 +29,7 @@ const splitSchema = new Schema(
 
 const billSchema = new Schema(
   {
-    title: { type: String, required: true },
+    title: { type: String },
     amount: { type: Number, required: true, min: 0 },
     createdBy: {
       type: mongoose.Schema.Types.ObjectId,
