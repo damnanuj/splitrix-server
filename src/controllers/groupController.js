@@ -196,19 +196,219 @@ export const createGroup = async (req, res) => {
   }
 };
 
+export const addMembersToGroup = async (req, res) => {
+  try {
+    const { groupId } = req.params;
+    const { memberIds = [] } = req.body;
+    const userId = req.user?.id;
+
+    if (!groupId) {
+      return res
+        .status(400)
+        .json({ success: false, message: "Group ID is required" });
+    }
+
+    if (!Array.isArray(memberIds) || memberIds.length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: "memberIds must be a non-empty array",
+      });
+    }
+
+    const group = await Group.findById(groupId);
+
+    if (!group) {
+      return res
+        .status(404)
+        .json({ success: false, message: "Group not found" });
+    }
+
+    // Any existing member can add new members
+    const isMember = (group.members || []).some(
+      (m) => String(m) === String(userId)
+    );
+
+    if (!isMember) {
+      return res.status(403).json({
+        success: false,
+        message: "Only group members can add new members",
+      });
+    }
+
+    const addedBy = userId;
+
+    // Current member IDs in the group
+    const existingMemberIdsSet = new Set(
+      (group.members || []).map((m) => String(m))
+    );
+
+    // Validate and filter incoming memberIds
+    const validMemberIds = memberIds
+      .map((id) => String(id).trim())
+      .filter((id) => mongoose.Types.ObjectId.isValid(id));
+
+    // Remove duplicates and already existing members and the adder
+    const uniqueNewMemberIds = [
+      ...new Set(
+        validMemberIds.filter(
+          (id) =>
+            id !== String(addedBy) && !existingMemberIdsSet.has(String(id))
+        )
+      ),
+    ];
+
+    if (uniqueNewMemberIds.length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: "No new valid members to add",
+      });
+    }
+
+    // Add new members to the group and save
+    group.members.push(...uniqueNewMemberIds);
+    await group.save();
+
+    // Fetch details of the user who is adding members (for notification content)
+    const addedByUser = await User.findById(addedBy).select(
+      "name email profilePicture"
+    );
+
+    if (!addedByUser) {
+      return res
+        .status(404)
+        .json({ success: false, message: "User performing action not found" });
+    }
+
+    // Send notifications to all newly added members
+    console.log(
+      `📨 Sending notifications to ${uniqueNewMemberIds.length} users added to group ${group._id}`
+    );
+
+    const notificationPromises = uniqueNewMemberIds.map(async (friendId) => {
+      try {
+        const notificationResult = await sendNotification({
+          user: friendId,
+          type: "group_added",
+          title: "You have been added to a group",
+          message: `You have been added to a group called "${group.name}" by ${addedByUser.name}`,
+          data: {
+            groupId: group._id,
+            creatorId: group.createdBy,
+            creatorName: "", // can be populated on client if needed
+            creatorProfilePicture: "",
+            groupName: group.name,
+            groupDescription: group.description,
+            groupAvatar: group.avatar,
+          },
+        });
+
+        if (notificationResult) {
+          console.log(
+            `✅ Notification sent successfully for user ${friendId}`
+          );
+          return { friendId: String(friendId), status: "ok" };
+        } else {
+          console.log(`⚠️ Notification failed for user ${friendId}`);
+          return {
+            friendId: String(friendId),
+            status: "notification_failed",
+          };
+        }
+      } catch (err) {
+        console.error(
+          `❌ Failed to send notification to ${friendId}:`,
+          err.message
+        );
+        return {
+          friendId: String(friendId),
+          status: "notification_error",
+          error: err.message,
+        };
+      }
+    });
+
+    const notificationResults = await Promise.allSettled(notificationPromises);
+    const processedNotifications = notificationResults.map((result, index) => {
+      if (result.status === "fulfilled") {
+        return result.value;
+      } else {
+        return {
+          friendId: String(uniqueNewMemberIds[index] || ""),
+          status: "notification_error",
+          error: result.reason?.message || "Unknown error",
+        };
+      }
+    });
+
+    const successfulNotifications = processedNotifications.filter(
+      (r) => r.status === "ok"
+    );
+    console.log(
+      `📨 Notification results: ${successfulNotifications.length}/${uniqueNewMemberIds.length} sent successfully`
+    );
+
+    // Log group joined activity for each newly added member
+    for (const friendId of uniqueNewMemberIds) {
+      try {
+        const friendUser = await User.findById(friendId).select(
+          "name profilePicture"
+        );
+        if (friendUser) {
+          await Activity.create({
+            group: group._id,
+            actor: friendId,
+            type: "group_joined",
+            summary: `${friendUser.name} was added to the group`,
+            data: {
+              groupId: group._id,
+              addedUserId: friendId,
+              addedUserName: friendUser.name,
+              addedUserProfilePicture: friendUser.profilePicture,
+              groupName: group.name,
+              addedBy: addedBy,
+              addedByName: addedByUser.name,
+            },
+          });
+        }
+      } catch (activityErr) {
+        console.error(
+          `⚠️ Failed to create activity log for user ${friendId}:`,
+          activityErr.message
+        );
+        // Don't fail the request if activity creation fails
+      }
+    }
+
+    // Fetch updated group with populated members and creator
+    const updatedGroup = await Group.findById(group._id)
+      .populate("members", "name email profilePicture")
+      .populate("createdBy", "name email profilePicture");
+
+    return res.status(200).json({
+      success: true,
+      message: "Members added successfully",
+      data: updatedGroup,
+    });
+  } catch (e) {
+    console.error("❌ Error in addMembersToGroup:", e);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to add members to group",
+      error: e.message,
+    });
+  }
+};
+
 export const getMyGroups = async (req, res) => {
   try {
     const userId = req.user?.id;
     const groups = await Group.find({ members: userId })
+      .select("-members") // exclude members array from response
       .sort({
         createdAt: -1,
       })
       .populate({
         path: "createdBy",
-        select: "name email profilePicture _id",
-      })
-      .populate({
-        path: "members",
         select: "name email profilePicture _id",
       });
 
@@ -278,7 +478,7 @@ export const getGroupDetails = async (req, res) => {
     const { groupId } = req.params;
     const userId = req.user?.id;
 
-    console.log(groupId, userId);
+    // console.log(groupId, userId);
 
     if (!groupId) {
       return res
@@ -301,83 +501,16 @@ export const getGroupDetails = async (req, res) => {
       return res.status(404).json({ success: false, msg: "Group not found" });
     }
 
-    // Check if user is a member
-    const isMember = group.members.some(
-      (member) => String(member._id) === String(userId)
-    );
-
-    // Check if user is the creator
-    const isCreator = String(group.createdBy._id) === String(userId);
-
-    // Calculate user's balance in this group if they are a member
-    let userBalance = null;
-    if (isMember) {
-      const bills = await Bill.find({ group: groupId });
-      const settlements = await Settlement.find({ group: groupId });
-
-      let netBalance = 0;
-      let amountOwed = 0;
-      let amountToReceive = 0;
-
-      // Process bills
-      for (const bill of bills) {
-        for (const split of bill.splitDetails) {
-          if (String(split.from) === String(userId)) {
-            netBalance -= split.amount;
-            amountOwed += split.amount;
-          }
-          if (String(split.to) === String(userId)) {
-            netBalance += split.amount;
-            amountToReceive += split.amount;
-          }
-        }
-      }
-
-      // Process settlements
-      for (const settlement of settlements) {
-        if (String(settlement.from) === String(userId)) {
-          netBalance -= settlement.amount;
-          amountOwed += settlement.amount;
-        }
-        if (String(settlement.to) === String(userId)) {
-          netBalance += settlement.amount;
-          amountToReceive += settlement.amount;
-        }
-      }
-
-      userBalance = {
-        net: netBalance,
-        amountOwed: amountOwed,
-        amountToReceive: amountToReceive,
-      };
-    }
-
-    // Determine membership status
-    let membershipStatus = "not_member";
-    if (isCreator) {
-      membershipStatus = "creator";
-    } else if (isMember) {
-      membershipStatus = "member";
-    }
-
     const response = {
-      group: {
-        _id: group._id,
-        name: group.name,
-        description: group.description,
-        avatar: group.avatar,
-        createdBy: group.createdBy,
-        members: group.members,
-        memberCount: group.members.length,
-        createdAt: group.createdAt,
-        updatedAt: group.updatedAt,
-      },
-      userMembership: {
-        isMember,
-        isCreator,
-        membershipStatus,
-        balance: userBalance,
-      },
+      _id: group._id,
+      name: group.name,
+      description: group.description,
+      avatar: group.avatar,
+      createdBy: group.createdBy,
+      members: group.members,
+      memberCount: group.members.length,
+      createdAt: group.createdAt,
+      updatedAt: group.updatedAt,
     };
 
     return res.status(200).json({
@@ -390,5 +523,104 @@ export const getGroupDetails = async (req, res) => {
     return res
       .status(500)
       .json({ success: false, msg: "Failed to fetch group details" });
+  }
+};
+
+export const getBalancesSummaryForUser = async (req, res) => {
+  try {
+    const { groupId } = req.params;
+    const userId = String(req.user?.id || "");
+
+    if (!groupId) {
+      return res
+        .status(400)
+        .json({ success: false, msg: "Group ID is required" });
+    }
+
+    // Ensure the group exists and the user belongs to it
+    const group = await Group.findById(groupId).populate({
+      path: "members",
+      select: "name _id profilePicture",
+    });
+
+    if (!group) {
+      return res.status(404).json({ success: false, msg: "Group not found" });
+    }
+
+    const isMember = group.members.some(
+      (member) => String(member._id) === userId
+    );
+    if (!isMember) {
+      return res.status(403).json({
+        success: false,
+        msg: "You are not a member of this group",
+      });
+    }
+
+    // Build a quick lookup for member info (name, avatar)
+    const memberInfoById = new Map(
+      group.members.map((m) => [
+        String(m._id),
+        { name: m.name || "", profilePicture: m.profilePicture || "" },
+      ])
+    );
+
+    // Track net amounts between the logged-in user and each member
+    const netWithMember = new Map();
+    const addAmount = (memberId, amount) => {
+      if (String(memberId) === userId) return; // skip self
+      const key = String(memberId);
+      netWithMember.set(key, (netWithMember.get(key) || 0) + amount);
+    };
+
+    // Pull only the fields we need
+    const bills = await Bill.find({ group: groupId }).select("splitDetails");
+    const settlements = await Settlement.find({ group: groupId }).select(
+      "from to amount"
+    );
+
+    // Bills: splitDetails.from owes splitDetails.to
+    for (const bill of bills) {
+      for (const split of bill.splitDetails || []) {
+        if (String(split.from) === userId) addAmount(split.to, -split.amount);
+        if (String(split.to) === userId) addAmount(split.from, split.amount);
+      }
+    }
+
+    // Settlements: from pays to
+    for (const settlement of settlements) {
+      if (String(settlement.from) === userId) {
+        addAmount(settlement.to, -settlement.amount);
+      }
+      if (String(settlement.to) === userId) {
+        addAmount(settlement.from, settlement.amount);
+      }
+    }
+
+    const balances = Array.from(netWithMember.entries())
+      .map(([memberId, amount]) => {
+        const info = memberInfoById.get(memberId) || {};
+        return {
+          memberId,
+          name: info.name || "Unknown",
+          profilePicture: info.profilePicture || "",
+          amount,
+        };
+      })
+      // keep only members where there is any balance to settle
+      .filter((b) => b.amount !== 0);
+
+    return res.status(200).json({
+      success: true,
+      msg: "Balance summary fetched successfully",
+      data: balances,
+    });
+  } catch (e) {
+    console.error("Error in getBalancesSummaryForUser:", e);
+    return res.status(500).json({
+      success: false,
+      msg: "Failed to fetch balance summary",
+      error: e.message,
+    });
   }
 };

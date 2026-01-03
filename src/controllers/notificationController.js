@@ -16,12 +16,15 @@ export const getMyNotifications = async (req, res) => {
       // .populate("user", "name email profilePicture")
       .lean();
 
+    console.log("notifications---------->>", notifications);
+
     const minimalNotifications = notifications.map((n) => ({
       _id: n._id,
       user: n.user,
       type: n.type,
+      // Ensure groupId is passed through (and cast to string) when present in data
+      groupId: n?.data?.groupId ? String(n.data.groupId) : null,
       inviteId: n?.data?.inviteId ?? null,
-      groupId: n?.data?.groupId ?? null,
       inviterId: n?.data?.inviterId ?? null,
       inviterName: n?.data?.inviterName ?? null,
       groupName: n?.data?.groupName ?? null,
