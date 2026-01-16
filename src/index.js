@@ -7,6 +7,7 @@ import groupRoutes from "./routes/groupRoutes.js";
 import settlementRoutes from "./routes/settlementRoutes.js";
 import balanceRoutes from "./routes/balanceRoutes.js";
 import notificationRoutes from "./routes/notificationRoutes.js";
+import activityRoutes from "./routes/activityRoutes.js";
 import cors from "cors";
 import serverless from "serverless-http";
 import { connectMongoDb } from "./db/dbConnection.js";
@@ -32,6 +33,7 @@ app.use("/api/group", groupRoutes);
 app.use("/api/settlement", settlementRoutes);
 app.use("/api/balance", balanceRoutes);
 app.use("/api/notifications", notificationRoutes);
+app.use("/api/activity", activityRoutes);
 
 app.get("/", (req, res) => {
   res.status(200).json({
