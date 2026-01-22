@@ -114,15 +114,17 @@ export const handleGoogleAuth = async (req, res) => {
     const { idToken } = req.body;
     console.log(req.body, "req.body");
 
-    console.log(idToken, "idToken");
-
-    if (!idToken) {
-      return res.status(400).json({ success: false, msg: "Missing idToken" });
+    // Validate idToken - check for missing, empty string, or whitespace-only
+    if (!idToken || typeof idToken !== "string" || !idToken.trim()) {
+      return res.status(400).json({ 
+        success: false, 
+        msg: "Missing or invalid idToken" 
+      });
     }
 
     // -------verify token with google--------
     const ticket = await client.verifyIdToken({
-      idToken,
+      idToken: idToken.trim(),
       audience: ENV.GOOGLE_WEB_CLIENT_ID,
     });
 
