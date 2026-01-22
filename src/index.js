@@ -46,7 +46,7 @@ app.get("/", (req, res) => {
 //   console.log(`Server is running on PORT = ${PORT}`);
 //   connectMongoDb();
 // });
-connectMongoDb();
+await connectMongoDb();
 
 if (process.env.NODE_ENV !== "prod") {
   app.listen(PORT, () => {
