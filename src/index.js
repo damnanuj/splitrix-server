@@ -51,6 +51,7 @@ connectMongoDb();
 if (process.env.NODE_ENV !== "prod") {
   app.listen(PORT, () => {
     console.log(`🚀 Server is running locally at http://localhost:${PORT}`);
+
   });
 }
 
