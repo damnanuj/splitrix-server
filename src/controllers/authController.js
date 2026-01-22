@@ -112,6 +112,7 @@ export const login = async (req, res) => {
 export const handleGoogleAuth = async (req, res) => {
   try {
     const { idToken } = req.body;
+    console.log(req.body, "req.body");
 
     console.log(idToken, "idToken");
 
