@@ -6,8 +6,12 @@ import {
   markAllNotificationsAsRead,
   getUnreadCount,
 } from "../controllers/notificationController.js";
+import { ensureDbConnection } from "../middleware/ensureDbConnection.js";
 
 const router = express.Router();
+
+// Ensure DB connection for all notification routes
+router.use(ensureDbConnection);
 
 // Get user's notifications
 router.get("/", isAuthenticated, getMyNotifications);

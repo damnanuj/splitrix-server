@@ -5,8 +5,12 @@ import {
   signup,
   demoController,
 } from "../controllers/authController.js";
+import { ensureDbConnection } from "../middleware/ensureDbConnection.js";
 
 const router = express.Router();
+
+// Ensure DB connection for all auth routes (especially critical for Google OAuth)
+router.use(ensureDbConnection);
 
 router.post("/signup", signup);
 router.post("/login", login);

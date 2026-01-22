@@ -42,16 +42,17 @@ app.get("/", (req, res) => {
   });
 });
 
-// app.listen(PORT, () => {
-//   console.log(`Server is running on PORT = ${PORT}`);
-//   connectMongoDb();
-// });
-await connectMongoDb();
-
+// For local development, connect to MongoDB on server start
+// For serverless (Vercel), connection will be established lazily in route handlers
 if (process.env.NODE_ENV !== "prod") {
-  app.listen(PORT, () => {
+  app.listen(PORT, async () => {
     console.log(`🚀 Server is running locally at http://localhost:${PORT}`);
-
+    // Connect to MongoDB for local development
+    try {
+      await connectMongoDb();
+    } catch (error) {
+      console.error("Failed to connect to MongoDB:", error);
+    }
   });
 }
 

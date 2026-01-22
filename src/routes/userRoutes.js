@@ -7,8 +7,12 @@ import {
   removeFriend,
 } from "../controllers/userController.js";
 import { isAuthenticated } from "../middleware/isAuthenticated.js";
+import { ensureDbConnection } from "../middleware/ensureDbConnection.js";
 
 const router = express.Router();
+
+// Ensure DB connection for all user routes
+router.use(ensureDbConnection);
 
 router.get("/", isAuthenticated, getUsers);
 router.get("/:id", isAuthenticated, getUserById);

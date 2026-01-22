@@ -7,8 +7,12 @@ import {
   getBalancesSummaryForUser,
   addMembersToGroup,
 } from "../controllers/groupController.js";
+import { ensureDbConnection } from "../middleware/ensureDbConnection.js";
 
 const router = express.Router();
+
+// Ensure DB connection for all group routes
+router.use(ensureDbConnection);
 
 router.post("/", isAuthenticated, createGroup);
 router.get("/mine", isAuthenticated, getMyGroups);
