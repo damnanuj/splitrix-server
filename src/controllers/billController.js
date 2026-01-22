@@ -3,6 +3,7 @@ import { Activity } from "../models/activityModel.js";
 import { sendNotification } from "../utils/notifications/send.js";
 import { Settlement } from "../models/settlementModel.js";
 import { User } from "../models/userModel.js";
+import { Group } from "../models/groupModel.js";
 
 const toIdString = (value) => {
   if (!value) return null;
@@ -319,5 +320,141 @@ export const getGroupBills = async (req, res) => {
     return res
       .status(500)
       .json({ success: false, msg: "Failed to fetch bills" });
+  }
+};
+
+export const getMyTransactions = async (req, res) => {
+  try {
+    const userId = String(req.user?.id);
+
+    if (!userId) {
+      return res.status(401).json({
+        success: false,
+        message: "User not authenticated",
+      });
+    }
+
+    // Find all groups where the user is a member
+    const userGroups = await Group.find({ members: userId }).select("_id");
+
+    if (!userGroups || userGroups.length === 0) {
+      return res.status(200).json({
+        success: true,
+        message: "Transactions fetched successfully",
+        data: [],
+      });
+    }
+
+    // Extract group IDs
+    const groupIds = userGroups.map((group) => group._id);
+
+    // Fetch all bills from groups the user is a member of
+    const bills = await Bill.find({ group: { $in: groupIds } })
+      .select("title amount shares createdAt group")
+      .populate("group", "name avatar")
+      .sort({ createdAt: -1 })
+      .lean();
+
+    // Filter bills to get only the user's share
+    const myTransactions = [];
+
+    for (const bill of bills) {
+      // Find the user's share in this bill
+      const userShare = (bill.shares || []).find(
+        (share) => String(share.user) === userId
+      );
+
+      if (userShare && userShare.amount > 0) {
+        myTransactions.push({
+          title: bill.title || "Untitled expense",
+          amount: Number(userShare.amount.toFixed(2)),
+          timing: bill.createdAt,
+          groupName: bill.group?.name || "Unknown Group",
+          groupId: bill.group?._id || bill.group,
+          groupIcon: bill.group?.avatar || "",
+        });
+      }
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: "Transactions fetched successfully",
+      data: myTransactions,
+    });
+  } catch (err) {
+    console.error("getMyTransactions error:", err);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to fetch transactions",
+      error: err.message,
+    });
+  }
+};
+
+export const getMyRecentExpenses = async (req, res) => {
+  try {
+    const userId = String(req.user?.id);
+
+    if (!userId) {
+      return res.status(401).json({
+        success: false,
+        message: "User not authenticated",
+      });
+    }
+
+    // Find all groups where the user is a member
+    const userGroups = await Group.find({ members: userId }).select("_id");
+
+    if (!userGroups || userGroups.length === 0) {
+      return res.status(200).json({
+        success: true,
+        message: "Recent expenses fetched successfully",
+        data: [],
+      });
+    }
+
+    // Extract group IDs
+    const groupIds = userGroups.map((group) => group._id);
+
+    // Fetch all bills from groups the user is a member of
+    const bills = await Bill.find({ group: { $in: groupIds } })
+      .select("title amount shares createdAt")
+      .sort({ createdAt: -1 })
+      .lean();
+
+    // Filter bills to get only the user's share and include total amount
+    const myExpenses = [];
+
+    for (const bill of bills) {
+      // Find the user's share in this bill
+      const userShare = (bill.shares || []).find(
+        (share) => String(share.user) === userId
+      );
+
+      if (userShare && userShare.amount > 0) {
+        myExpenses.push({
+          title: bill.title || "Untitled expense",
+          myShare: Number(userShare.amount.toFixed(2)),
+          totalAmount: Number(bill.amount.toFixed(2)),
+          timing: bill.createdAt,
+        });
+      }
+    }
+
+    // Limit to recent 7 transactions
+    const recentExpenses = myExpenses.slice(0, 7);
+
+    return res.status(200).json({
+      success: true,
+      message: "Recent expenses fetched successfully",
+      data: recentExpenses,
+    });
+  } catch (err) {
+    console.error("getMyRecentExpenses error:", err);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to fetch recent expenses",
+      error: err.message,
+    });
   }
 };
